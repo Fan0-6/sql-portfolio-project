@@ -1,63 +1,69 @@
-SaaS Conversion Analysis SQL Project
+SQL Portfolio Project: The SaaS "Freemium" Conversion Hunter
 
-This project is a complete, end-to-end data analysis portfolio piece designed to demonstrate a practical understanding of SQL, data pipelines, and business analysis.
+Project Overview
 
-The Business Problem
+This is an end-to-end SQL analysis project for a data analyst portfolio. It follows a common business scenario: a SaaS (Software-as-a-Service) company wants to understand what product features drive users to upgrade from a free/trial plan to a paid subscription.
 
-A software-as-a-service (SaaS) company with a "freemium" model wants to convert more of its free users to the paid "Pro" tier. We do not know which in-app features or usage patterns are most effective at convincing users to upgrade.
+The goal was to analyze a raw, multi-table dataset, build a "data warehouse" (an aggregated analytics table), and use SQL queries to find the "golden path" that leads to conversion.
 
-Our goal is to find the "magic features" that have the highest correlation with a free to paid conversion.
+Business Problem: How do we convert more freemium users to paid customers?
 
-The business solution will be a data-driven recommendation (e.g., "We should redesign our onboarding to push free users to use the 'Reporting' feature, as our analysis shows this triples the likelihood of conversion.").
+Data: A 5-table relational dataset (accounts, subscriptions, feature usage, etc.) from Kaggle.
 
-The Process
+Tools: SQLite for database, SQL for ETL and Analysis.
 
-This project follows the real-world data analytics workflow:
-
-Raw Data: We start with 5 raw, messy CSV files (from the SaaS Subscription & Churn Analytics Dataset) representing the company's production database. The data includes event-level feature usage, subscription history, and account information.
-
-ETL Pipeline: We use SQL to build an ETL (Extract, Transform, Load) pipeline. This single script (build_fct_user_summary.sql) cleans the data, aggregates millions of "feature usage" events into a clean, weekly summary, and joins all data sources. This demonstrates query optimization—we run the big, expensive query once to create a slim, fast table for analysis.
-
-Analysis: We query our new, aggregated table (fct_user_summary) to find insights.
-
-Visualization: We connect a BI (Business Intelligence) tool like Tableau or Power BI to our aggregated table to tell a story and present the final recommendation.
+Final Answer: A user's engagement with the 'Collaboration' (feature_12) and 'Reports' (feature_5) features in their first week is the single biggest predictor of conversion.
 
 1. The ETL Pipeline (build_fct_user_summary.sql)
 
-This is the core of the project. The SQL script takes the raw tables:
+The raw data was spread across 5 tables and was not suitable for analysis. The ravenstack_feature_usage table, in particular, was too granular (one row per event).
 
-raw_accounts
+To solve this, I built a single, repeatable SQL script (build_fct_user_summary.sql) that transforms all 5 raw tables into one clean, fast, aggregated analytics table called fct_user_summary.
 
-raw_subscriptions
+This script performs all the ETL (Extract, Transform, Load) logic:
 
-raw_feature_usage
+Extract: Selects data from the 5 raw tables (ravenstack_accounts, ravenstack_subscriptions, etc.).
 
-raw_support_tickets
+Transform:
 
-...and creates a new, analytics-ready table: fct_user_summary.
+Cleans Data: Handles NULL values in industry and standardizes all dates.
 
-This new table is "slimmer and more functional" because it aggregates millions of granular event rows into one row per user, summarizing their critical "first week" activity and linking it to their eventual conversion status.
+Aggregates Usage: "Pivots" the granular ravenstack_feature_usage table into a summary of a user's first 7 days of activity.
 
-Key SQL Techniques Demonstrated:
+Maps Features: Maps generic names like feature_5 to business concepts like first_week_uses_reports.
 
-CTEs (Common Table Expressions): To organize the logic.
+Finds Conversions: This was the most complex part. Using ROW_NUMBER() and LAG() window functions, the script correctly identifies a "true freemium conversion" by finding only users who 1) started on a free/trial plan and 2) later upgraded to a paid plan.
 
-Window Functions: LAG() is used to pinpoint the exact moment a user's subscription changes from Free to Pro.
+Load: Creates the final fct_user_summary table, which serves as our fast, clean data source for all analysis.
 
-Aggregation: GROUP BY, SUM(CASE WHEN ...) are used to "pivot" feature usage data from rows to columns.
+2. The Analysis (query_1_ & query_2_)
 
-Data Cleaning: COALESCE is used to manage NULL values, and DATE() functions are used to standardize timestamps.
+With the fct_user_summary table built, I could run simple, fast queries to solve the business problem.
 
-Joins: LEFT JOIN is used to combine all the data sources into our final table.
+Analysis 1: Finding the "Magic Feature" (query_1_feature_correlation.sql)
 
-2. Analysis & Insights (Next Steps)
+This query groups all users into two buckets ("Converted" vs. "Non-Converted") and compares their average feature usage in the first week.
 
-With our fct_user_summary table, we can now run fast, simple queries to answer our business problem.
 
-Example Analysis Queries:
+Insights:
 
-analysis_queries.sql
+Golden Path: Converted users use the 'Collaboration' (feature_12) feature 2.3x more and the 'Reports' (feature_5) feature 4x more than non-converting users.
 
-3. Dashboard
+Red Flag: Non-converting users use the 'Admin' (feature_20) feature more and file more support tickets. This suggests they are confused, lost, or "tinkering" instead of finding value.
 
-(Link to your public Tableau, Power BI, or Looker Studio dashboard)
+Analysis 2: The "Golden Path" Threshold (query_2_threshold_analysis.sql)
+
+Analysis 1 told us 'Collaboration' was the key. This more advanced query digs deeper to find the exact impact of using it.
+
+Insight:
+Users who do not use the 'Collaboration' feature convert at a baseline of 43.4%. For the users who adopt this feature and use it 3 or more times, the conversion rate jumps to 66.7%.
+
+3. Final Business Recommendation
+
+Based on this analysis, the company can take immediate, data-driven action to increase revenue:
+
+Redesign Onboarding: The new-user onboarding experience must funnel all users directly into the 'Collaboration' and 'Reports' features.
+
+Set a Goal: The Product team's #1 goal should be to get every new user to use the 'Collaboration' feature at least 3 times in their first week, as this makes them 1.5x more likely to convert.
+
+Reduce Friction: The 'Admin' feature should be de-emphasized, and the high number of support tickets from non-converters should be investigated to reduce confusion.
