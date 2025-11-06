@@ -44,6 +44,43 @@ Analysis 1: Finding the "Magic Feature" (query_1_feature_correlation.sql)
 
 This query groups all users into two buckets ("Converted" vs. "Non-Converted") and compares their average feature usage in the first week.
 
+The results were crystal clear:
+
+user_group
+
+total_users
+
+avg_collab_used
+
+avg_reports_used
+
+avg_admin_used
+
+avg_support_tickets
+
+Non-Converted
+
+281
+
+0.10
+
+0.02
+
+0.11
+
+0.06
+
+Converted
+
+219
+
+0.23
+
+0.08
+
+0.04
+
+0.04
 
 Insights:
 
@@ -54,6 +91,34 @@ Red Flag: Non-converting users use the 'Admin' (feature_20) feature more and fil
 Analysis 2: The "Golden Path" Threshold (query_2_threshold_analysis.sql)
 
 Analysis 1 told us 'Collaboration' was the key. This more advanced query digs deeper to find the exact impact of using it.
+
+The results were staggering:
+
+collab_usage_bucket
+
+total_users_in_bucket
+
+total_conversions
+
+conversion_rate_percent
+
+0_uses
+
+491
+
+213
+
+43.38%
+
+3_or_more_uses
+
+9
+
+6
+
+66.67%
+
+(Note: No users fell into the '1_use' or '2_uses' buckets, suggesting it's a "power-user" feature.)
 
 Insight:
 Users who do not use the 'Collaboration' feature convert at a baseline of 43.4%. For the users who adopt this feature and use it 3 or more times, the conversion rate jumps to 66.7%.
