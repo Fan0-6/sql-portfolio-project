@@ -3,9 +3,6 @@
 SQL Portfolio Project: SaaS "Freemium" Conversion Hunter
 Analysis Queries
 
-Author: Fanling Liu
-Date: November 6, 2025
-
 Purpose:
 This query runs against our clean `fct_user_summary` table to find
 the "magic feature."
@@ -22,7 +19,6 @@ in averages is our "magic feature."
 */
 
 SELECT
-    -- This `CASE` statement makes the output human-readable
     CASE
         WHEN did_convert = 1 THEN 'Converted Users'
         WHEN did_convert = 0 THEN 'Non-Converted Users'
@@ -31,7 +27,6 @@ SELECT
     COUNT(user_id) AS total_users,
     
     -- Calculate the average usage for each group
-    -- We use ROUND(..., 2) to make the numbers clean
     ROUND(AVG(first_week_logins), 2) AS avg_first_week_logins,
     ROUND(AVG(first_week_uses_reports), 2) AS avg_reports_used,
     ROUND(AVG(first_week_uses_collab), 2) AS avg_collab_used,

@@ -3,41 +3,26 @@
 SQL Portfolio Project: SaaS "Freemium" Conversion Hunter
 ETL (Extract, Transform, Load) Pipeline
 
-Author: Fanling Liu
-Date: November 6, 2025
-
-Purpose:
 This script transforms raw, messy data from a SaaS company into a clean,
 aggregated "data warehouse" table. The final table, `fct_user_summary`,
 is optimized for solving our business problem: "What features drive
 free users to convert to a paid plan?"
-
-This script demonstrates:
-- Common Table Expressions (CTEs) for clean, readable logic.
-- Data Cleaning (COALESCE for NULLs, DATE/DATETIME casting).
-- Aggregation (GROUP BY, SUM, COUNT, CASE statements).
-- Window Functions (LAG() to detect subscription changes).
-- Joins (LEFT JOIN) to combine multiple data sources.
-
 ==================================================================================
 */
-
--- Drop the table if it already exists, so we can re-run the script
+-- Drop the table if it already exists
 DROP TABLE IF EXISTS fct_user_summary;
 
--- Create our final "fact" table, `fct_user_summary`
+-- Create fact table `fct_user_summary`
 CREATE TABLE fct_user_summary AS
 
--- Use Common Table Expressions (CTEs) to build our logic step-by-step
+-- Use Common Table Expressions (CTEs) to build logic step-by-step
 WITH
 
 -- CTE 1: Clean up the `ravenstack_accounts` table
 dim_users AS (
     SELECT
         account_id,
-        -- We assume `signup_date` from `ravenstack_accounts` is the source of truth
         DATE(signup_date) AS signup_date,
-        -- Clean up NULL industries
         COALESCE(industry, 'Unknown') AS industry
     FROM
         ravenstack_accounts
@@ -46,29 +31,19 @@ dim_users AS (
 -- CTE 2: Aggregate all feature usage during a user's *first 7 days*
 first_week_usage AS (
     SELECT
-        -- NOTE: We must join `ravenstack_feature_usage` to `ravenstack_subscriptions`
-        -- to get the `account_id` (which we call `user_id` in our logic).
         sub.account_id AS user_id,
-        
-        -- We "pivot" the data here, turning rows into columns
-        SUM(CASE WHEN fu.feature_name = 'login' THEN 1 ELSE 0 END) AS first_week_logins,
-        SUM(CASE WHEN fu.feature_name = 'Reports' THEN 1 ELSE 0 END) AS first_week_uses_reports,
-        SUM(CASE WHEN fu.feature_name = 'Collaboration' THEN 1 ELSE 0 END) AS first_week_uses_collab,
-        SUM(CASE WHEN fu.feature_name = 'Admin' THEN 1 ELSE 0 END) AS first_week_uses_admin
+        SUM(CASE WHEN fu.feature_name = 'feature_2'  THEN fu.usage_count ELSE 0 END) AS first_week_logins,
+        SUM(CASE WHEN fu.feature_name = 'feature_5'  THEN fu.usage_count ELSE 0 END) AS first_week_uses_reports,
+        SUM(CASE WHEN fu.feature_name = 'feature_12' THEN fu.usage_count ELSE 0 END) AS first_week_uses_collab,
+        SUM(CASE WHEN fu.feature_name = 'feature_20' THEN fu.usage_count ELSE 0 END) AS first_week_uses_admin
     FROM
         ravenstack_feature_usage AS fu
-    
-    -- Join subscription table to link feature usage to a user account
     JOIN
         ravenstack_subscriptions AS sub ON fu.subscription_id = sub.subscription_id
-    
-    -- Join with our user dimension to get their signup date
     JOIN
         dim_users AS u ON sub.account_id = u.account_id
-    
-    -- This is the key: only look at events from their first 7 days
     WHERE
-        DATETIME(fu.usage_date) BETWEEN u.signup_date AND DATE(u.signup_date, '+7 days')
+        DATE(fu.usage_date) BETWEEN DATE(u.signup_date) AND DATE(u.signup_date, '+7 days')
     GROUP BY
         sub.account_id
 ),
@@ -83,39 +58,83 @@ first_week_tickets AS (
     JOIN
         dim_users AS u ON st.account_id = u.account_id
     WHERE
-        -- Only count tickets from their first 7 days
-        DATETIME(st.submitted_at) BETWEEN u.signup_date AND DATE(u.signup_date, '+7 days')
+        DATE(st.submitted_at) BETWEEN DATE(u.signup_date) AND DATE(u.signup_date, '+7 days')
     GROUP BY
         st.account_id
 ),
 
--- CTE 4: Find the *first conversion event* for each user
--- This is where we find users who went from 'Free' to 'Pro'
+-- CTE 4: Find the *first conversion event* for users who *started* non-paying
 conversion_data AS (
-    WITH sub_history AS (
-        -- Use LAG() to see what the user's *previous* plan was
+    -- Step 1: Get all subscription history with a "paying" flag
+    WITH sub_history_with_state AS (
         SELECT
             account_id,
-            plan_tier AS plan_name, -- Alias to match original logic
             DATE(start_date) AS start_date,
-            LAG(plan_tier, 1) OVER (
-                PARTITION BY account_id
-                ORDER BY start_date
-            ) AS previous_plan
+            plan_tier,
+            is_trial,
+            -- Define what a "paid" state is: Pro/Enterprise and NOT a trial
+            CASE
+                WHEN (plan_tier = 'Pro' OR plan_tier = 'Enterprise') AND (is_trial = 0 OR is_trial = 'False')
+                THEN 1
+                ELSE 0
+            END AS paying_state,
+            -- Rank the plans for each user, oldest to newest
+            ROW_NUMBER() OVER(PARTITION BY account_id ORDER BY DATE(start_date)) AS plan_rank
         FROM
             ravenstack_subscriptions
+    ),
+    
+    -- Step 2: Find the user's *initial* plan state
+    initial_plan_state AS (
+        SELECT
+            account_id,
+            paying_state AS initial_paying_state
+        FROM
+            sub_history_with_state
+        WHERE
+            plan_rank = 1
+    ),
+    
+    -- Step 3: Find all 0 -> 1 transitions (potential conversions)
+    transitions AS (
+        SELECT
+            account_id,
+            start_date,
+            paying_state,
+            -- Use LAG to find the PREVIOUS state for this user
+            LAG(paying_state, 1, 0) OVER (
+                PARTITION BY account_id
+                ORDER BY start_date
+            ) AS previous_paying_state
+        FROM
+            sub_history_with_state
+    ),
+    
+    -- Step 4: Identify the *first* conversion event
+    first_conversion_event AS (
+        SELECT
+            account_id,
+            MIN(start_date) AS first_conversion_date
+        FROM
+            transitions
+        WHERE
+            previous_paying_state = 0 AND paying_state = 1
+        GROUP BY
+            account_id
     )
-    -- Now, find the *first time* their `previous_plan` was 'Free' and the
-    -- new `plan_name` is 'Pro'. This is the "conversion event".
+    
+    -- Step 5: Final list of "true" conversions.
+    -- Only include users who *started* non-paying (initial_paying_state = 0)
+    -- AND had a conversion event.
     SELECT
-        account_id,
-        MIN(start_date) AS first_conversion_date
+        fce.account_id,
+        fce.first_conversion_date
     FROM
-        sub_history
+        first_conversion_event AS fce
+    JOIN
+        initial_plan_state AS ips ON fce.account_id = ips.account_id
     WHERE
-        previous_plan = 'Free' AND plan_name = 'Pro'
-    GROUP BY
-        account_id
+        ips.initial_paying_state = 0
 )
 
 -- Final SELECT: Combine all our CTEs into one clean table
@@ -123,18 +142,18 @@ SELECT
     u.account_id AS user_id,
     u.industry,
     u.signup_date,
-
-    -- Create a binary flag for conversion
+    
+    -- Conversion flag (1 = yes, 0 = no)
     CASE WHEN c.first_conversion_date IS NOT NULL THEN 1 ELSE 0 END AS did_convert,
-
-    -- Calculate days from signup to conversion (NULL if they never converted)
+    
+    -- Days to convert (useful for other analyses)
     CASE
         WHEN c.first_conversion_date IS NOT NULL
         THEN JULIANDAY(c.first_conversion_date) - JULIANDAY(u.signup_date)
         ELSE NULL
     END AS days_to_conversion,
-
-    -- Use COALESCE to turn NULLs (from users with 0 activity) into 0
+    
+    -- Feature usage (COALESCE converts NULLs to 0s for users with no usage)
     COALESCE(fwu.first_week_logins, 0) AS first_week_logins,
     COALESCE(fwu.first_week_uses_reports, 0) AS first_week_uses_reports,
     COALESCE(fwu.first_week_uses_collab, 0) AS first_week_uses_collab,
@@ -151,9 +170,9 @@ LEFT JOIN
 LEFT JOIN
     first_week_tickets AS fwt ON u.account_id = fwt.user_id
 
--- LEFT JOIN our conversion data
+-- LEFT JOIN our *new*, correct conversion data
 LEFT JOIN
-    conversion_data AS c ON u.account_id = c.account_id -- << THE FIX IS HERE
+    conversion_data AS c ON u.account_id = c.account_id
 
 ORDER BY
     u.signup_date;
