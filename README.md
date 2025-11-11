@@ -1,10 +1,10 @@
-# SQL Portfolio Project: The SaaS "Freemium" Conversion Hunter
+# SQL Portfolio Project: The SaaS Conversion Hunter
 
 ## Project Overview
 
 This is an end-to-end SQL analysis project for a data analyst portfolio. It follows a common business scenario: a SaaS (Software-as-a-Service) company wants to understand what product features drive users to upgrade from a free/trial plan to a paid subscription.
 
-The goal was to analyze a raw, multi-table dataset, build a "data warehouse" (an aggregated analytics table), and use SQL queries to find the "golden path" that leads to conversion.
+The goal was to analyze a raw, multi-table dataset, build a simple data warehouse, and use SQL queries to identify the best path to conversion.
 
 * **Business Problem:** How do we convert more freemium users to paid customers?
 * **Data:** A 5-table relational dataset (accounts, subscriptions, feature usage, etc.) from Kaggle.
